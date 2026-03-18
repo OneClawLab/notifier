@@ -18,7 +18,7 @@ const fsSafeTaskFileArb = fc.record({
   created_at: fc.date({ min: new Date('2020-01-01'), max: new Date('2030-12-31') })
     .filter(d => !isNaN(d.getTime()))
     .map(d => d.toISOString()),
-  description: fc.option(fsafeStringArb, { nil: undefined }),
+  description: fc.option(fsafeStringArb, { nil: undefined }).map(v => v ?? ''),
 });
 
 // Inline processTaskFile (mirrors daemon.ts)

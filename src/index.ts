@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 import { program } from './help.js';
 
 if (process.argv.includes('--daemon')) {

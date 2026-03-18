@@ -156,7 +156,7 @@ describe('log rotation', () => {
       const rotated = files.filter(f => /^notifier-\d{8}-\d{6}\.log$/.test(f));
       expect(rotated).toHaveLength(1);
       // Verify the timestamp portion is a plausible date
-      const match = rotated[0].match(/^notifier-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/);
+      const match = rotated[0]!.match(/^notifier-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})\.log$/);
       expect(match).not.toBeNull();
     } finally {
       await cleanup();

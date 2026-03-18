@@ -36,7 +36,7 @@ describe('Property 12: 日志行格式符合规范', () => {
           const content = fs.readFileSync(path.join(tmpDir, 'notifier.log'), 'utf8');
           const lines = content.split('\n').filter(l => l.length > 0);
 
-          return lines.length === 1 && LOG_LINE_RE.test(lines[0]) && lines[0].includes(message);
+          return lines.length === 1 && LOG_LINE_RE.test(lines[0]!) && lines[0]!.includes(message);
         } finally {
           await rm(tmpDir, { recursive: true, force: true });
         }

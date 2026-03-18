@@ -33,16 +33,19 @@ export function createTaskCommand(): Command {
     .requiredOption('--author <name>', 'Author name')
     .requiredOption('--task-id <id>', 'Task ID')
     .option('--command <cmd>', 'Command to run (reads from stdin if omitted)')
+    .option('--cmd <cmd>', 'Alias for --command')
     .action(async (opts) => {
-      const { author, taskId, command: cmdOpt } = opts as {
+      const { author, taskId, command: cmdOpt, cmd: cmdAlias } = opts as {
         author: string;
         taskId: string;
         command?: string;
+        cmd?: string;
       };
 
       let command: string;
-      if (cmdOpt !== undefined) {
-        command = cmdOpt;
+      const resolvedCmd = cmdOpt ?? cmdAlias;
+      if (resolvedCmd !== undefined) {
+        command = resolvedCmd;
       } else {
         // Read single line from stdin
         const stdinData = readFileSync('/dev/stdin', 'utf8');

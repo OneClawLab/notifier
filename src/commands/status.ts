@@ -24,8 +24,10 @@ export function createStatusCommand(): Command {
       const status = await getDaemonStatus(home);
 
       if (json) {
+        process.stderr.write(`Data: ${home}\n`);
         process.stdout.write(JSON.stringify(status) + '\n');
       } else {
+        process.stdout.write(`Data: ${home}\n`);
         if (status.running) {
           process.stdout.write(`Daemon is running (PID: ${status.pid})\n`);
         } else {
