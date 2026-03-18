@@ -1,0 +1,30 @@
+{
+  "name": "notifier",
+  "type": "module",
+  "version": "1.0.0",
+  "description": "notifier is a Linux CLI tool and daemon for scheduling and executing shell commands.",
+  "bin": {
+    "notifier": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsup --watch --onSuccess 'node dist/index.js'",
+    "build": "tsup",
+    "test": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "release:local": "npm run build && npm link"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "fast-check": "^4.6.0",
+    "tsup": "^8.5.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
+  }
+}
