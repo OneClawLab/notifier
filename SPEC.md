@@ -386,6 +386,7 @@ Log file: `$NOTIFIER_HOME/logs/notifier.log`
 1. **task add / timer add**：不覆盖已存在的同名文件（非幂等，重复添加报错）。
 2. **task remove / timer remove**：删除不存在的文件报错（幂等性不适用）。
 3. **Daemon task processing**：同一文件只会被处理一次（处理后移走），天然幂等。
+4. **At-least-once 语义**：如果 daemon 在执行命令过程中崩溃（任务文件既没移到 done 也没移到 error），重启后 daemon 会扫描 `tasks/pending/` 处理残留文件，该任务会被重新执行。因此被调度的命令自身应具备幂等性或能容忍重复执行。
 
 ## 11. Environment Variables
 
