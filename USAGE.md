@@ -127,11 +127,29 @@ notifier timer remove --author <name> --task-id <id>
 
 ## Daemon 模式
 
+### start
+
+启动后台守护进程：
+
 ```bash
-notifier --daemon
+notifier start
 ```
 
-启动后台守护进程，监听即时任务文件变动并按 CRON 调度定时任务。同一时间只允许一个实例运行。
+前台运行（日志同时输出到 stdout 和日志文件，适合调试）：
+
+```bash
+notifier start --foreground
+```
+
+同一时间只允许一个实例运行。
+
+### stop
+
+停止守护进程：
+
+```bash
+notifier stop
+```
 
 **即时任务处理流程：**
 1. 监听 `tasks/pending/` 目录，检测到新 `.txt` 文件时读取并执行。

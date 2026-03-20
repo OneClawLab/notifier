@@ -6,7 +6,7 @@ import { parseTaskFile } from './task-file.js';
 import { parseTimerFile } from './timer-file.js';
 import { parseCron } from './cron-parser.js';
 import { executeCommand } from './executor.js';
-import { createFileLogger } from './logger.js';
+import { createFileLogger, createForegroundLogger } from './logger.js';
 import type { Logger } from './logger.js';
 import { writePidFile, removePidFile, readPidFile, isProcessAlive } from './pid-file.js';
 import type { TimerFile } from './types.js';
@@ -222,7 +222,11 @@ async function processResidualTasks(
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export async function runDaemon(): Promise<void> {
+export interface DaemonOptions {
+  foreground?: boolean;
+}
+
+export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
   const home = getNotifierHome();
   const paths = getPaths(home);
 
@@ -231,7 +235,7 @@ export async function runDaemon(): Promise<void> {
   if (existingPid !== null) {
     if (isProcessAlive(existingPid)) {
       process.stderr.write(
-        `Error: Daemon is already running (PID: ${existingPid}). Only one instance is allowed.\n`,
+        `Error: Daemon is already running (PID: ${existingPid}). Use 'notifier stop' first.\n`,
       );
       process.exit(1);
     } else {
@@ -243,7 +247,9 @@ export async function runDaemon(): Promise<void> {
   await ensureDirs(home);
 
   // ── Logger ─────────────────────────────────────────────────────────────────
-  const logger = await createFileLogger(paths.logs);
+  const logger = opts.foreground
+    ? await createForegroundLogger(paths.logs)
+    : await createFileLogger(paths.logs);
 
   if (existingPid !== null && !isProcessAlive(existingPid)) {
     logger.warn(`Detected stale lock (PID: ${existingPid}). Overwriting PID file.`);

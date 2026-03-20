@@ -90,6 +90,28 @@ export async function createFileLogger(logDir: string): Promise<Logger> {
 }
 
 /**
+ * Creates a foreground Logger that writes to both stdout and log file.
+ */
+export async function createForegroundLogger(logDir: string): Promise<Logger> {
+  const fileLogger = await createFileLogger(logDir);
+
+  function writeLine(level: LogLevel, message: string): void {
+    const line = formatLogLine(level, message);
+    process.stdout.write(line + '\n');
+    fileLogger[level.toLowerCase() as 'info' | 'warn' | 'error'](message);
+  }
+
+  return {
+    info(message: string) { writeLine('INFO', message); },
+    warn(message: string) { writeLine('WARN', message); },
+    error(message: string) { writeLine('ERROR', message); },
+    close(): Promise<void> {
+      return fileLogger.close();
+    },
+  };
+}
+
+/**
  * Creates a stderr-based Logger. close() is a no-op.
  */
 export function createStderrLogger(): Logger {
