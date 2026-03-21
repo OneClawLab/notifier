@@ -1,10 +1,16 @@
 import { Command } from 'commander';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createTaskCommand } from './commands/task.js';
 import { createTimerCommand } from './commands/timer.js';
 import { createStatusCommand } from './commands/status.js';
 import { createStartCommand } from './commands/start.js';
 import { createStopCommand } from './commands/stop.js';
 import { getNotifierHome } from './paths.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, '../package.json'), 'utf8')) as { version: string };
 
 const MAIN_EXAMPLES = `
 Daemon:
@@ -23,7 +29,7 @@ export const program = new Command();
 program
   .name('notifier')
   .description('CLI tool and daemon for scheduling and executing shell commands')
-  .version('1.0.0', '-v, --version', 'output the current version')
+  .version(pkg.version, '-v, --version', 'output the current version')
   .addHelpText('after', MAIN_EXAMPLES)
   .configureHelp({ sortSubcommands: true })
   .addCommand(createStartCommand())
