@@ -1,21 +1,32 @@
 {
-  "name": "notifier",
+  "name": "@theclawlab/notifier",
   "type": "module",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "notifier is a Linux CLI tool and daemon for scheduling and executing shell commands.",
   "bin": {
-    "notifier": "./dist/index.js"
+    "notifier": "dist/index.js"
   },
   "scripts": {
     "dev": "tsup --watch --onSuccess 'node dist/index.js'",
     "build": "tsup",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
-    "release:local": "npm run build && npm link"
+    "release:local": "npm run build && npm link",
+    "release:public": "npm test && npm run build && npm publish --access public",
+    "release:public:skip-test": "npm run build && npm publish --access public"
   },
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "USAGE.md"
+  ],
   "devDependencies": {
     "@types/node": "^25.4.0",
     "fast-check": "^4.6.0",

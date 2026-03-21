@@ -10,6 +10,14 @@ A Linux CLI tool and daemon for scheduling and executing shell commands via file
 
 ## Install
 
+### From npm
+
+```bash
+npm install -g @theclawlab/notifier
+```
+
+### From source
+
 ```bash
 npm run build && npm link
 ```
