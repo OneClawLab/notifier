@@ -6,7 +6,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { createFileLogger } from '../../src/logger.js';
+import { createFileLogger } from '../../src/repo-utils/logger.js';
 
 // [ISO8601] [LEVEL] message
 const LOG_LINE_RE = /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\] \[(INFO|WARN|ERROR)\] .+$/;
@@ -25,7 +25,7 @@ describe('Property 12: 日志行格式符合规范', () => {
       fc.asyncProperty(safeMessageArb, levelArb, async (message, level) => {
         const tmpDir = await mkdtemp(path.join(tmpdir(), 'logger-pbt-'));
         try {
-          const logger = await createFileLogger(tmpDir);
+          const logger = await createFileLogger(tmpDir, 'notifier');
 
           if (level === 'INFO') logger.info(message);
           else if (level === 'WARN') logger.warn(message);

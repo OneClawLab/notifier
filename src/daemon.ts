@@ -6,8 +6,8 @@ import { parseTaskFile } from './task-file.js';
 import { parseTimerFile } from './timer-file.js';
 import { parseCron } from './cron-parser.js';
 import { executeCommand } from './executor.js';
-import { createFileLogger, createForegroundLogger } from './logger.js';
-import type { Logger } from './logger.js';
+import { createFileLogger, createForegroundLogger } from './repo-utils/logger.js';
+import type { Logger } from './repo-utils/logger.js';
 import { writePidFile, removePidFile, readPidFile, isProcessAlive } from './pid-file.js';
 import type { TimerFile } from './types.js';
 
@@ -248,8 +248,8 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
 
   // ── Logger ─────────────────────────────────────────────────────────────────
   const logger = opts.foreground
-    ? await createForegroundLogger(paths.logs)
-    : await createFileLogger(paths.logs);
+    ? await createForegroundLogger(paths.logs, 'notifier')
+    : await createFileLogger(paths.logs, 'notifier');
 
   if (existingPid !== null && !isProcessAlive(existingPid)) {
     logger.warn(`Detected stale lock (PID: ${existingPid}). Overwriting PID file.`);
