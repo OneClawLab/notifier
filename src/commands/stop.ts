@@ -33,6 +33,7 @@ export function createStopCommand(): Command {
       while (Date.now() < deadline) {
         await new Promise(r => setTimeout(r, 200));
         if (!isProcessAlive(pid)) {
+          await removePidFile(home);
           process.stdout.write(`Daemon stopped (was PID: ${pid})\n`);
           process.exit(0);
         }
