@@ -48,7 +48,12 @@ export function createTaskCommand(): Command {
         command = resolvedCmd;
       } else {
         // Read single line from stdin
-        const stdinData = readFileSync('/dev/stdin', 'utf8');
+        const stdinData = await new Promise<string>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          process.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+          process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString('utf-8')));
+          process.stdin.on('error', reject);
+        });
         command = stdinData.split('\n')[0] ?? '';
       }
 
