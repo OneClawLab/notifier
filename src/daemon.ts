@@ -311,11 +311,15 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
   // ── Process residual instant tasks ────────────────────────────────────────
   await processResidualTasks(paths.tasksPending, paths.tasksDone, paths.tasksError, logger);
 
-  // ── Watch timers/ for changes → rebuild Job Table ─────────────────────────
+  // ── Watch timers/ for changes → rebuild Job Table + wakeup main loop ───────
+  let wakeupResolve: (() => void) | null = null;
+
   const timersWatcher = watch(paths.timers, { persistent: false }, (_event, _filename) => {
     logger.info('timers/ directory changed — rebuilding Job Table');
     void buildJobTable(paths.timers, logger, new Date()).then(table => {
       jobTable = table;
+      // Wake up the main loop so it recalculates sleep based on the new job table
+      wakeupResolve?.();
     });
   });
 
@@ -349,8 +353,12 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
       },
     );
 
-    // Race: file event vs timeout vs shutdown
-    type RaceResult = { type: 'file'; filename: string } | { type: 'timeout' } | { type: 'shutdown' };
+    // Race: file event vs timeout vs shutdown vs wakeup
+    type RaceResult = { type: 'file'; filename: string } | { type: 'timeout' } | { type: 'shutdown' } | { type: 'wakeup' };
+
+    const wakeupPromise = new Promise<RaceResult>(resolve => {
+      wakeupResolve = () => resolve({ type: 'wakeup' });
+    });
 
     const timeoutPromise = new Promise<RaceResult>(resolve =>
       setTimeout(() => resolve({ type: 'timeout' }), sleepMs),
@@ -360,6 +368,7 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
       fileEventPromise.then(filename => ({ type: 'file' as const, filename })),
       timeoutPromise,
       shutdownPromise.then(() => ({ type: 'shutdown' as const })),
+      wakeupPromise,
     ]);
 
     // Clean up the pending watcher after each race
