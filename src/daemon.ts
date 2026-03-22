@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { getNotifierHome, getPaths, ensureDirs } from './paths.js';
 import { parseTaskFile } from './task-file.js';
 import { parseTimerFile } from './timer-file.js';
-import { parseCron } from './cron-parser.js';
+import { parseCron, cronHasSeconds } from './cron-parser.js';
 import { executeCommand } from './executor.js';
 import { createFileLogger, createForegroundLogger } from './repo-utils/logger.js';
 import type { Logger } from './repo-utils/logger.js';
@@ -17,6 +17,7 @@ interface Job {
   timer: TimerFile;
   nextRun: Date;
   lastRun?: Date;
+  hasSeconds: boolean;  // true if timer uses 6-field (second-level) cron
 }
 
 type JobTable = Map<string, Job>; // key = filename
@@ -55,6 +56,7 @@ async function buildJobTable(timersDir: string, logger: Logger, now: Date): Prom
       table.set(filename, {
         timer: result.value,
         nextRun: cronResult.value.nextTime,
+        hasSeconds: cronHasSeconds(result.value.timer),
       });
     } catch (err) {
       logger.error(`Failed to read timer file [${filename}]: ${String(err)}`);
@@ -101,30 +103,31 @@ async function handleOnMiss(
 
 /**
  * Calculate the most recent trigger time before `now` for a CRON expression.
+ * Steps by second for 6-field expressions, by minute for 5-field.
  * Returns null if no trigger exists in the past 366 days.
  */
 function calcPrevTrigger(expr: string, now: Date): Date | null {
-  // We use parseCron going backwards: check (now - 1min), (now - 2min), ...
-  // For efficiency, we check up to 366 days back
+  const isSecond = cronHasSeconds(expr);
+  const stepMs = isSecond ? 1_000 : 60_000;
   const maxMs = 366 * 24 * 60 * 60 * 1000;
   const limit = new Date(now.getTime() - maxMs);
 
-  // Start from the previous minute
   const candidate = new Date(now);
-  candidate.setSeconds(0, 0);
-  candidate.setMinutes(candidate.getMinutes() - 1);
+  if (isSecond) {
+    candidate.setMilliseconds(0);
+    candidate.setTime(candidate.getTime() - stepMs);
+  } else {
+    candidate.setSeconds(0, 0);
+    candidate.setMinutes(candidate.getMinutes() - 1);
+  }
 
-  // We need to check if the CRON matches this candidate
-  // Use parseCron with candidate as "now" and check if nextTime is > candidate
-  // Actually, we need to check if candidate itself is a trigger time
-  // We'll do this by checking parseCron(expr, candidate - 1min).nextTime === candidate
   while (candidate >= limit) {
-    const checkFrom = new Date(candidate.getTime() - 60000); // 1 min before candidate
+    const checkFrom = new Date(candidate.getTime() - stepMs);
     const result = parseCron(expr, checkFrom);
     if (result.ok && result.value.nextTime.getTime() === candidate.getTime()) {
       return candidate;
     }
-    candidate.setMinutes(candidate.getMinutes() - 1);
+    candidate.setTime(candidate.getTime() - stepMs);
   }
 
   return null;
@@ -321,8 +324,10 @@ export async function runDaemon(opts: DaemonOptions = {}): Promise<void> {
     const now = new Date();
     const minNextRun = calcMinNextRun(jobTable);
 
-    // Calculate sleep duration until next CRON trigger (or 60s default)
-    let sleepMs = 60_000;
+    // Calculate sleep duration until next CRON trigger.
+    // Default: 1s if any job uses second-level cron, else 60s.
+    const hasSecondJobs = [...jobTable.values()].some(j => j.hasSeconds);
+    let sleepMs = hasSecondJobs ? 1_000 : 60_000;
     if (minNextRun !== null) {
       const diff = minNextRun.getTime() - now.getTime();
       sleepMs = Math.max(0, diff);

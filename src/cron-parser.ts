@@ -1,7 +1,11 @@
 import type { CronParseResult, ParseResult } from './types.js';
 
-const FIELD_NAMES = ['minute', 'hour', 'day', 'month', 'weekday'] as const;
-type FieldName = (typeof FIELD_NAMES)[number];
+// Supports both 5-field (minute hour day month weekday)
+// and 6-field (second minute hour day month weekday) CRON expressions.
+
+const FIELD_NAMES_5 = ['minute', 'hour', 'day', 'month', 'weekday'] as const;
+const FIELD_NAMES_6 = ['second', 'minute', 'hour', 'day', 'month', 'weekday'] as const;
+type FieldName = (typeof FIELD_NAMES_6)[number];
 
 interface FieldRange {
   min: number;
@@ -9,6 +13,7 @@ interface FieldRange {
 }
 
 const FIELD_RANGES: Record<FieldName, FieldRange> = {
+  second:  { min: 0, max: 59 },
   minute:  { min: 0, max: 59 },
   hour:    { min: 0, max: 23 },
   day:     { min: 1, max: 31 },
@@ -24,7 +29,6 @@ function parseField(expr: string, range: FieldRange): number[] | null {
   const { min, max } = range;
   const values = new Set<number>();
 
-  // Handle comma-separated list
   const parts = expr.split(',');
   for (const part of parts) {
     if (part === '*') {
@@ -34,7 +38,6 @@ function parseField(expr: string, range: FieldRange): number[] | null {
       if (isNaN(step) || step <= 0) return null;
       for (let i = min; i <= max; i += step) values.add(i);
     } else if (part.includes('/')) {
-      // range/step: a-b/n
       const slashIdx = part.indexOf('/');
       const rangePart = part.slice(0, slashIdx);
       const stepStr = part.slice(slashIdx + 1);
@@ -42,10 +45,8 @@ function parseField(expr: string, range: FieldRange): number[] | null {
       if (isNaN(step) || step <= 0) return null;
       if (rangePart.includes('-')) {
         const dashIdx = rangePart.indexOf('-');
-        const aStr = rangePart.slice(0, dashIdx);
-        const bStr = rangePart.slice(dashIdx + 1);
-        const a = parseInt(aStr, 10);
-        const b = parseInt(bStr, 10);
+        const a = parseInt(rangePart.slice(0, dashIdx), 10);
+        const b = parseInt(rangePart.slice(dashIdx + 1), 10);
         if (isNaN(a) || isNaN(b) || a < min || b > max || a > b) return null;
         for (let i = a; i <= b; i += step) values.add(i);
       } else {
@@ -53,10 +54,8 @@ function parseField(expr: string, range: FieldRange): number[] | null {
       }
     } else if (part.includes('-')) {
       const dashIdx = part.indexOf('-');
-      const aStr = part.slice(0, dashIdx);
-      const bStr = part.slice(dashIdx + 1);
-      const a = parseInt(aStr, 10);
-      const b = parseInt(bStr, 10);
+      const a = parseInt(part.slice(0, dashIdx), 10);
+      const b = parseInt(part.slice(dashIdx + 1), 10);
       if (isNaN(a) || isNaN(b) || a < min || b > max || a > b) return null;
       for (let i = a; i <= b; i++) values.add(i);
     } else {
@@ -70,29 +69,52 @@ function parseField(expr: string, range: FieldRange): number[] | null {
 }
 
 interface ParsedCron {
+  second: number[];   // always present; [0] for 5-field expressions
   minute: number[];
   hour: number[];
   day: number[];
   month: number[];
   weekday: number[];
+  hasSeconds: boolean;
 }
 
 function parseCronFields(expr: string): ParseResult<ParsedCron> {
   const fields = expr.trim().split(/\s+/);
-  if (fields.length !== 5) {
-    return { ok: false, error: `Invalid CRON expression: expected 5 fields, got ${fields.length}` };
+
+  let fieldDefs: [FieldName, string][];
+  let hasSeconds: boolean;
+
+  if (fields.length === 5) {
+    hasSeconds = false;
+    fieldDefs = [
+      ['minute',  fields[0]!],
+      ['hour',    fields[1]!],
+      ['day',     fields[2]!],
+      ['month',   fields[3]!],
+      ['weekday', fields[4]!],
+    ];
+  } else if (fields.length === 6) {
+    hasSeconds = true;
+    fieldDefs = [
+      ['second',  fields[0]!],
+      ['minute',  fields[1]!],
+      ['hour',    fields[2]!],
+      ['day',     fields[3]!],
+      ['month',   fields[4]!],
+      ['weekday', fields[5]!],
+    ];
+  } else {
+    return { ok: false, error: `Invalid CRON expression: expected 5 or 6 fields, got ${fields.length}` };
   }
 
-  const exprs: [FieldName, string][] = [
-    ['minute', fields[0]!],
-    ['hour', fields[1]!],
-    ['day', fields[2]!],
-    ['month', fields[3]!],
-    ['weekday', fields[4]!],
-  ];
+  const result: Partial<ParsedCron> = { hasSeconds };
 
-  const result: Partial<ParsedCron> = {};
-  for (const [name, fieldExpr] of exprs) {
+  // For 5-field, second is always 0
+  if (!hasSeconds) {
+    result.second = [0];
+  }
+
+  for (const [name, fieldExpr] of fieldDefs) {
     const values = parseField(fieldExpr, FIELD_RANGES[name]);
     if (values === null || values.length === 0) {
       return { ok: false, error: `Invalid CRON expression: invalid value in field "${name}"` };
@@ -108,18 +130,19 @@ function parseCronFields(expr: string): ParseResult<ParsedCron> {
  * Weekday: 0 and 7 both mean Sunday.
  */
 function matchesCron(cron: ParsedCron, date: Date): boolean {
-  const minute = date.getMinutes();
-  const hour = date.getHours();
-  const day = date.getDate();
-  const month = date.getMonth() + 1; // 1-based
-  const weekday = date.getDay(); // 0=Sunday
+  const second  = date.getSeconds();
+  const minute  = date.getMinutes();
+  const hour    = date.getHours();
+  const day     = date.getDate();
+  const month   = date.getMonth() + 1;
+  const weekday = date.getDay();
 
-  if (!cron.minute.includes(minute)) return false;
-  if (!cron.hour.includes(hour)) return false;
-  if (!cron.month.includes(month)) return false;
-  if (!cron.day.includes(day)) return false;
+  if (!cron.second.includes(second))  return false;
+  if (!cron.minute.includes(minute))  return false;
+  if (!cron.hour.includes(hour))      return false;
+  if (!cron.month.includes(month))    return false;
+  if (!cron.day.includes(day))        return false;
 
-  // Weekday: 0 and 7 both mean Sunday
   const normalizedWeekdays = cron.weekday.map(w => (w === 7 ? 0 : w));
   if (!normalizedWeekdays.includes(weekday)) return false;
 
@@ -127,24 +150,32 @@ function matchesCron(cron: ParsedCron, date: Date): boolean {
 }
 
 /**
- * Calculate the next trigger time after `now` (strictly greater than now).
- * Advances minute-by-minute, up to 366 days.
+ * Calculate the next trigger time strictly after `now`.
+ * Steps by second for 6-field expressions, by minute for 5-field.
  */
 function calcNextTime(cron: ParsedCron, now: Date): Date | null {
-  // Start from the next minute
-  const start = new Date(now);
-  start.setSeconds(0, 0);
-  start.setMinutes(start.getMinutes() + 1);
+  const stepMs = cron.hasSeconds ? 1_000 : 60_000;
+  const maxMs  = 366 * 24 * 60 * 60 * 1000;
+  const limit  = new Date(now.getTime() + maxMs);
 
-  const maxMs = 366 * 24 * 60 * 60 * 1000;
-  const limit = new Date(now.getTime() + maxMs);
+  // Start from the next step boundary after now
+  const start = new Date(now.getTime() + stepMs);
+  if (cron.hasSeconds) {
+    start.setMilliseconds(0);
+  } else {
+    start.setSeconds(0, 0);
+    // already advanced by 60s above, but re-align to next minute boundary
+    start.setTime(now.getTime());
+    start.setSeconds(0, 0);
+    start.setMinutes(start.getMinutes() + 1);
+  }
 
   const candidate = new Date(start);
   while (candidate <= limit) {
     if (matchesCron(cron, candidate)) {
       return new Date(candidate);
     }
-    candidate.setMinutes(candidate.getMinutes() + 1);
+    candidate.setTime(candidate.getTime() + stepMs);
   }
 
   return null;
@@ -173,60 +204,57 @@ function describeFieldValues(values: number[], type: FieldName): string {
   if (isAll) return 'every ' + type;
 
   if (type === 'weekday') {
-    // Normalize 7 -> 0
     const normalized = [...new Set(values.map(v => (v === 7 ? 0 : v)))].sort((a, b) => a - b);
-    const names = normalized.map(v => WEEKDAY_NAMES[v]);
-    return names.join(', ');
+    return normalized.map(v => WEEKDAY_NAMES[v]).join(', ');
   }
-
-  if (type === 'month') {
-    const names = values.map(v => MONTH_NAMES[v]);
-    return names.join(', ');
-  }
-
-  if (type === 'minute' || type === 'hour' || type === 'day') {
-    if (type === 'day') return values.map(ordinal).join(', ');
-    return values.join(', ');
-  }
-
+  if (type === 'month') return values.map(v => MONTH_NAMES[v]).join(', ');
+  if (type === 'day')   return values.map(ordinal).join(', ');
   return values.join(', ');
 }
 
 function generateDescription(cron: ParsedCron): string {
-  const minuteRange = FIELD_RANGES.minute;
-  const hourRange = FIELD_RANGES.hour;
-  const dayRange = FIELD_RANGES.day;
-  const monthRange = FIELD_RANGES.month;
-  const weekdayRange = FIELD_RANGES.weekday;
-
-  const allMinutes = cron.minute.length === (minuteRange.max - minuteRange.min + 1);
-  const allHours = cron.hour.length === (hourRange.max - hourRange.min + 1);
-  const allDays = cron.day.length === (dayRange.max - dayRange.min + 1);
-  const allMonths = cron.month.length === (monthRange.max - monthRange.min + 1);
-  // weekday 0-7 has 8 values but 0 and 7 are both Sunday, so "all" means all 7 days
+  const allSeconds  = cron.second.length  === 60;
+  const allMinutes  = cron.minute.length  === 60;
+  const allHours    = cron.hour.length    === 24;
+  const allDays     = cron.day.length     === 31;
+  const allMonths   = cron.month.length   === 12;
   const normalizedWeekdays = [...new Set(cron.weekday.map(v => (v === 7 ? 0 : v)))];
   const allWeekdays = normalizedWeekdays.length === 7;
 
   // Build time part
   let timePart: string;
-  if (allMinutes && allHours) {
-    timePart = 'every minute';
-  } else if (allMinutes) {
-    const hourDesc = describeFieldValues(cron.hour, 'hour');
-    timePart = `every minute of hour ${hourDesc}`;
-  } else if (allHours) {
-    const minDesc = cron.minute.join(', ');
-    timePart = `at minute ${minDesc} of every hour`;
+  if (cron.hasSeconds) {
+    if (allSeconds && allMinutes && allHours) {
+      timePart = 'every second';
+    } else if (allSeconds && allMinutes) {
+      timePart = `every second of hour ${describeFieldValues(cron.hour, 'hour')}`;
+    } else if (allSeconds) {
+      timePart = `every second of minute ${cron.minute.join(', ')}`;
+    } else {
+      const secDesc = cron.second.join(', ');
+      if (allMinutes && allHours) {
+        timePart = `at second ${secDesc} of every minute`;
+      } else {
+        timePart = `at second ${secDesc} of minute ${cron.minute.join(', ')}`;
+      }
+    }
   } else {
-    // Specific hours and minutes
-    const times = cron.hour.flatMap(h =>
-      cron.minute.map(m => {
-        const hh = String(h).padStart(2, '0');
-        const mm = String(m).padStart(2, '0');
-        return `${hh}:${mm}`;
-      })
-    );
-    timePart = `at ${times.join(', ')}`;
+    if (allMinutes && allHours) {
+      timePart = 'every minute';
+    } else if (allMinutes) {
+      timePart = `every minute of hour ${describeFieldValues(cron.hour, 'hour')}`;
+    } else if (allHours) {
+      timePart = `at minute ${cron.minute.join(', ')} of every hour`;
+    } else {
+      const times = cron.hour.flatMap(h =>
+        cron.minute.map(m => {
+          const hh = String(h).padStart(2, '0');
+          const mm = String(m).padStart(2, '0');
+          return `${hh}:${mm}`;
+        })
+      );
+      timePart = `at ${times.join(', ')}`;
+    }
   }
 
   // Build day/weekday part
@@ -241,13 +269,7 @@ function generateDescription(cron: ParsedCron): string {
     dayPart = `on the ${describeFieldValues(cron.day, 'day')} and on ${describeFieldValues(cron.weekday, 'weekday')}`;
   }
 
-  // Build month part
-  let monthPart: string;
-  if (allMonths) {
-    monthPart = '';
-  } else {
-    monthPart = ` in ${describeFieldValues(cron.month, 'month')}`;
-  }
+  const monthPart = allMonths ? '' : ` in ${describeFieldValues(cron.month, 'month')}`;
 
   return `Runs ${timePart}, ${dayPart}${monthPart}`.trim();
 }
@@ -273,7 +295,13 @@ export function parseCron(expr: string, now?: Date): ParseResult<CronParseResult
 export function describeCron(expr: string): ParseResult<string> {
   const fieldsResult = parseCronFields(expr);
   if (!fieldsResult.ok) return fieldsResult;
+  return { ok: true, value: generateDescription(fieldsResult.value) };
+}
 
-  const description = generateDescription(fieldsResult.value);
-  return { ok: true, value: description };
+/**
+ * Whether the expression uses second-level precision (6 fields).
+ * Used by the daemon to decide its tick interval.
+ */
+export function cronHasSeconds(expr: string): boolean {
+  return expr.trim().split(/\s+/).length === 6;
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseCron, describeCron } from '../../src/cron-parser.js';
+import { parseCron, describeCron, cronHasSeconds } from '../../src/cron-parser.js';
 
 // Helper: build a Date in local time from explicit components
 function localDate(year: number, month: number, day: number, hour = 0, minute = 0, second = 0): Date {
@@ -88,9 +88,14 @@ describe('parseCron', () => {
       expect(result.ok).toBe(false);
     });
 
-    it('returns ok: false for 6 fields', () => {
-      const result = parseCron('* * * * * *');
+    it('returns ok: false for 7 fields', () => {
+      const result = parseCron('* * * * * * *');
       expect(result.ok).toBe(false);
+    });
+
+    it('accepts 6 fields (second-level cron)', () => {
+      const result = parseCron('0 * * * * *');
+      expect(result.ok).toBe(true);
     });
   });
 
@@ -115,6 +120,62 @@ describe('parseCron', () => {
       if (result.ok) return;
       expect(result.error.toLowerCase()).toContain('month');
     });
+  });
+});
+
+describe('6-field (second-level) cron', () => {
+  it('every second: * * * * * * — nextTime is now + 1s', () => {
+    const now = localDate(2024, 6, 15, 10, 30, 5);
+    const result = parseCron('* * * * * *', now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const expected = localDate(2024, 6, 15, 10, 30, 6);
+    expect(result.value.nextTime.getTime()).toBe(expected.getTime());
+  });
+
+  it('every 5 seconds: */5 * * * * * — nextTime aligns to next multiple of 5', () => {
+    const now = localDate(2024, 6, 15, 10, 30, 7);
+    const result = parseCron('*/5 * * * * *', now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const expected = localDate(2024, 6, 15, 10, 30, 10);
+    expect(result.value.nextTime.getTime()).toBe(expected.getTime());
+  });
+
+  it('at second 0 every minute: 0 * * * * * — nextTime is next :00', () => {
+    const now = localDate(2024, 6, 15, 10, 30, 5);
+    const result = parseCron('0 * * * * *', now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const expected = localDate(2024, 6, 15, 10, 31, 0);
+    expect(result.value.nextTime.getTime()).toBe(expected.getTime());
+  });
+
+  it('nextTime is strictly > now when now is exactly at a trigger second', () => {
+    const now = localDate(2024, 6, 15, 10, 30, 10);
+    const result = parseCron('*/5 * * * * *', now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.nextTime.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  it('invalid second value (60) returns error mentioning "second"', () => {
+    const result = parseCron('60 * * * * *');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.toLowerCase()).toContain('second');
+  });
+});
+
+describe('cronHasSeconds', () => {
+  it('returns false for 5-field expression', () => {
+    expect(cronHasSeconds('* * * * *')).toBe(false);
+    expect(cronHasSeconds('0 9 * * 1-5')).toBe(false);
+  });
+
+  it('returns true for 6-field expression', () => {
+    expect(cronHasSeconds('* * * * * *')).toBe(true);
+    expect(cronHasSeconds('*/5 * * * * *')).toBe(true);
   });
 });
 

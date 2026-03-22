@@ -99,15 +99,34 @@ notifier timer add \
 示例：
 
 ```bash
+# 每天凌晨 2 点清理日志（5 字段，分钟级）
 notifier timer add \
   --author ops \
   --task-id cleanup-logs \
   --command "find /var/log/app -name '*.log' -mtime +7 -delete" \
   --timer "0 2 * * *" \
   --description "Clean up logs older than 7 days"
+
+# 每 10 秒执行一次（6 字段，秒级）
+notifier timer add \
+  --author ops \
+  --task-id heartbeat \
+  --command "echo tick" \
+  --timer "*/10 * * * * *"
 ```
 
-CRON 格式为标准 5 字段（分 时 日 月 周），格式错误时报错退出（退出码 2）。
+**CRON 格式：**
+
+支持 5 字段（分钟级）和 6 字段（秒级）两种格式：
+
+| 格式 | 字段顺序 | 示例 | 含义 |
+|------|----------|------|------|
+| 5 字段 | `分 时 日 月 周` | `0 9 * * 1-5` | 工作日 9:00 |
+| 6 字段 | `秒 分 时 日 月 周` | `*/10 * * * * *` | 每 10 秒 |
+
+各字段支持：`*`、`*/n`（步进）、`a-b`（范围）、`a-b/n`（范围步进）、逗号分隔列表。
+
+格式错误时报错退出（退出码 2）。
 
 ### timer list
 
@@ -195,8 +214,19 @@ author=ops
 task_id=cleanup-logs
 command=find /var/log/app -name '*.log' -mtime +7 -delete
 timer=0 2 * * *
-timer_desc=Every day at 2:00 AM
+timer_desc=Runs at 00:02, every day
 description=Clean up application logs older than 7 days
+created_at=2026-03-18T10:30:00Z
+```
+
+秒级定时任务示例（`timers/ops-heartbeat.txt`）：
+
+```
+author=ops
+task_id=heartbeat
+command=echo tick
+timer=*/10 * * * * *
+timer_desc=Runs at every 10 seconds, every day
 created_at=2026-03-18T10:30:00Z
 ```
 

@@ -114,16 +114,25 @@ describe('Requirement 2.1 — notifier start creates PID file and process is ali
   it('PID file exists after notifier start', async () => {
     await runCli(['start']);
 
-    // Give the background daemon a moment to write its PID file
-    await new Promise(r => setTimeout(r, 500));
-
+    // Poll for PID file to appear (up to 3s)
     const pidFile = getPaths(home).pidFile;
+    const deadline = Date.now() + 3000;
+    while (!existsSync(pidFile) && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+    }
+
     expect(existsSync(pidFile)).toBe(true);
   }, 15000);
 
   it('process recorded in PID file is alive after notifier start', async () => {
     await runCli(['start']);
-    await new Promise(r => setTimeout(r, 500));
+
+    // Poll for PID file to appear (up to 3s)
+    const pidFile = getPaths(home).pidFile;
+    const deadline = Date.now() + 3000;
+    while (!existsSync(pidFile) && Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, 100));
+    }
 
     const pid = await readPid(home);
     expect(pid).not.toBeNull();
@@ -136,7 +145,13 @@ describe('Requirement 2.1 — notifier start creates PID file and process is ali
 describe('Requirement 2.2 — notifier stop deletes PID file', () => {
   it('PID file is deleted after notifier stop', async () => {
     await runCli(['start']);
-    await new Promise(r => setTimeout(r, 500));
+
+    // Poll for PID file to appear (up to 3s)
+    const pidFilePath = getPaths(home).pidFile;
+    const startDeadline = Date.now() + 3000;
+    while (!existsSync(pidFilePath) && Date.now() < startDeadline) {
+      await new Promise(r => setTimeout(r, 100));
+    }
 
     // Verify daemon is running first
     const pidBefore = await readPid(home);

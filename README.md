@@ -26,13 +26,16 @@ npm run build && npm link
 
 ```bash
 # Start the daemon
-notifier --daemon
+notifier start
 
 # Add an instant task
 notifier task add --author me --task-id hello --command "echo hello world"
 
 # Add a daily timer (runs at 9 AM every weekday)
 notifier timer add --author me --task-id morning --timer "0 9 * * 1-5" --command "echo good morning"
+
+# Add a second-level timer (runs every 10 seconds)
+notifier timer add --author me --task-id heartbeat --timer "*/10 * * * * *" --command "echo tick"
 
 # Check daemon status
 notifier status
@@ -43,6 +46,15 @@ notifier task list
 # List timers
 notifier timer list
 ```
+
+## CRON format
+
+Both 5-field (minute-level) and 6-field (second-level) expressions are supported:
+
+| Format | Fields | Example | Meaning |
+|--------|--------|---------|---------|
+| 5-field | `min hour day month weekday` | `0 9 * * 1-5` | 9 AM on weekdays |
+| 6-field | `sec min hour day month weekday` | `*/10 * * * * *` | every 10 seconds |
 
 ## Data directory
 
