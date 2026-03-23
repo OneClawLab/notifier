@@ -1,7 +1,7 @@
 {
   "name": "@theclawlab/notifier",
   "type": "module",
-  "version": "1.0.3",
+  "version": "1.0.8",
   "description": "notifier is a Linux CLI tool and daemon for scheduling and executing shell commands.",
   "bin": {
     "notifier": "dist/index.js"
