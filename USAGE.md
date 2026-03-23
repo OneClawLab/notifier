@@ -60,15 +60,19 @@ notifier task add \
 ### task list
 
 ```bash
-notifier task list [--status pending|done|error] [--json]
+notifier task list [--status pending|done|error] [--all] [--json]
 ```
 
-默认列出 `pending` 状态的任务，输出格式：`author  task_id  command（截断）`。
+默认列出 `pending` 状态的任务，每条打印完整字段（author、task_id、created_at、description、command）。
+
+`--all` 同时显示 pending 全部 + done/error 各最新 10 条，按 bucket 分组输出。
 
 ```bash
 notifier task list
 notifier task list --status done
 notifier task list --status error --json
+notifier task list --all
+notifier task list --all --json
 ```
 
 ### task remove

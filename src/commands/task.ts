@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { Command } from 'commander';
 import { getNotifierHome, getPaths, ensureDirs } from '../paths.js';
 import { parseTaskFile, serializeTaskFile, taskFileName } from '../task-file.js';
-import type { TaskStatus } from '../types.js';
+import type { TaskFile, TaskStatus } from '../types.js';
 
 function outputError(error: string, suggestion: string, json: boolean): void {
   if (json) {
@@ -21,6 +21,15 @@ function getTaskDir(status: TaskStatus): string {
     case 'done':    return paths.tasksDone;
     case 'error':   return paths.tasksError;
   }
+}
+
+function printTaskDetail(task: TaskFile): void {
+  process.stdout.write(`  author:      ${task.author}\n`);
+  process.stdout.write(`  task_id:     ${task.task_id}\n`);
+  process.stdout.write(`  created_at:  ${task.created_at}\n`);
+  if (task.description) process.stdout.write(`  description: ${task.description}\n`);
+  process.stdout.write(`  command:     ${task.command}\n`);
+  process.stdout.write('\n');
 }
 
 export function createTaskCommand(): Command {
@@ -87,54 +96,78 @@ export function createTaskCommand(): Command {
   task
     .command('list')
     .description('List tasks')
-    .option('--status <status>', 'Task status: pending, done, or error', 'pending')
+    .option('--status <status>', 'Task status: pending, done, or error (ignored when --all)', 'pending')
+    .option('--all', 'Show pending + latest 10 done + latest 10 error')
     .option('--json', 'Output as JSON array')
     .action((opts) => {
-      const { status, json } = opts as { status: string; json?: boolean };
+      const { status, all, json } = opts as { status: string; all?: boolean; json?: boolean };
+
       const validStatuses: TaskStatus[] = ['pending', 'done', 'error'];
+
+      if (all) {
+        // Collect all three buckets
+        const readBucket = (s: TaskStatus, limit?: number): { status: TaskStatus; file: string; task: ReturnType<typeof parseTaskFile> }[] => {
+          const dir = getTaskDir(s);
+          let files: string[] = [];
+          try { files = readdirSync(dir).filter(f => f.endsWith('.txt')); } catch { files = []; }
+          // done/error: newest first (by filename lexicographic order is fine for ISO dates)
+          if (limit !== undefined) files = files.slice(-limit).reverse();
+          return files.map(f => ({ status: s, file: f, task: parseTaskFile(readFileSync(join(dir, f), 'utf8')) }));
+        };
+
+        const pending = readBucket('pending');
+        const done    = readBucket('done', 10);
+        const error   = readBucket('error', 10);
+        const all_items = [...pending, ...done, ...error];
+
+        if (json) {
+          const out = all_items
+            .filter(i => i.task.ok)
+            .map(i => ({ status: i.status, ...(i.task.ok ? i.task.value : {}) }));
+          process.stdout.write(JSON.stringify(out) + '\n');
+          return;
+        }
+
+        for (const bucket of [
+          { label: 'PENDING', items: pending },
+          { label: 'DONE (latest 10)', items: done },
+          { label: 'ERROR (latest 10)', items: error },
+        ]) {
+          process.stdout.write(`\n── ${bucket.label} ──\n`);
+          if (bucket.items.length === 0) { process.stdout.write('  (none)\n'); continue; }
+          for (const { file, task } of bucket.items) {
+            if (!task.ok) { process.stdout.write(`  [parse error] ${file}\n`); continue; }
+            printTaskDetail(task.value);
+          }
+        }
+        return;
+      }
+
+      // single-status mode
       if (!validStatuses.includes(status as TaskStatus)) {
-        outputError(
-          `Invalid status: ${status}`,
-          `Valid values are: pending, done, error`,
-          json ?? false,
-        );
+        outputError(`Invalid status: ${status}`, `Valid values are: pending, done, error`, json ?? false);
         process.exit(1);
       }
 
       const dir = getTaskDir(status as TaskStatus);
-
       let files: string[] = [];
-      try {
-        files = readdirSync(dir).filter((f) => f.endsWith('.txt'));
-      } catch {
-        // Directory doesn't exist yet — treat as empty
-        files = [];
-      }
+      try { files = readdirSync(dir).filter(f => f.endsWith('.txt')); } catch { files = []; }
 
       if (json) {
-        if (files.length === 0) {
-          process.stdout.write('[]\n');
-          return;
-        }
-        const tasks = files.map((f) => {
-          const content = readFileSync(join(dir, f), 'utf8');
-          const result = parseTaskFile(content);
-          return result.ok ? result.value : null;
+        if (files.length === 0) { process.stdout.write('[]\n'); return; }
+        const tasks = files.map(f => {
+          const r = parseTaskFile(readFileSync(join(dir, f), 'utf8'));
+          return r.ok ? r.value : null;
         }).filter(Boolean);
         process.stdout.write(JSON.stringify(tasks) + '\n');
-      } else {
-        if (files.length === 0) {
-          process.stdout.write(`No tasks found in ${status}.\n`);
-          return;
-        }
-        for (const f of files) {
-          const content = readFileSync(join(dir, f), 'utf8');
-          const result = parseTaskFile(content);
-          if (!result.ok) continue;
-          const { author, task_id, command } = result.value;
-          const truncated = command.length > 50 ? command.slice(0, 50) + '…' : command;
-          process.stdout.write(`${author}\t${task_id}\t${truncated}\n`);
-        }
+        return;
+      }
+
+      if (files.length === 0) { process.stdout.write(`No tasks found in ${status}.\n`); return; }
+      for (const f of files) {
+        const r = parseTaskFile(readFileSync(join(dir, f), 'utf8'));
+        if (!r.ok) continue;
+        printTaskDetail(r.value);
       }
     });
 
