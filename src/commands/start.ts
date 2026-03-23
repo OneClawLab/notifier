@@ -1,6 +1,30 @@
 import { Command } from 'commander';
-import { getNotifierHome } from '../paths.js';
+import { getNotifierHome, getPaths, ensureDirs } from '../paths.js';
 import { readPidFile, isProcessAlive } from '../pid-file.js';
+import { openSync } from 'node:fs';
+import { join } from 'node:path';
+
+/** Poll for PID file to appear and contain a live PID, up to `timeoutMs`. */
+async function waitForReady(home: string, timeoutMs: number): Promise<number | null> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 100));
+    const pid = await readPidFile(home);
+    if (pid !== null && isProcessAlive(pid)) return pid;
+  }
+  return null;
+}
+
+/**
+ * Filter execArgv to pass through loader flags (tsx, esm) but drop
+ * debug/inspect flags that would cause port conflicts in the child.
+ */
+function safeExecArgv(): string[] {
+  return process.execArgv.filter(arg =>
+    !arg.startsWith('--inspect') &&
+    !arg.startsWith('--debug')
+  );
+}
 
 export function createStartCommand(): Command {
   return new Command('start')
@@ -20,29 +44,32 @@ export function createStartCommand(): Command {
       }
 
       if (foreground) {
-        // Foreground mode: import and run daemon directly (logs to stdout)
+        // Foreground mode: run daemon directly in this process
         const { runDaemon } = await import('../daemon.js');
         await runDaemon({ foreground: true });
       } else {
-        // Background mode: spawn detached child process
+        // Background mode: spawn detached child, redirect stderr to log file
         const { spawn } = await import('node:child_process');
-        const child = spawn(process.execPath, [...process.execArgv, ...getStartArgs()], {
+        const paths = getPaths(home);
+        await ensureDirs(home);
+        const logFile = join(paths.logs, 'notifier.log');
+        const logFd = openSync(logFile, 'a');
+        const script = process.argv[1] ?? '';
+        const child = spawn(process.execPath, [...safeExecArgv(), script, 'start', '--foreground'], {
           detached: true,
-          stdio: 'ignore',
+          stdio: ['ignore', logFd, logFd],
           env: { ...process.env, NOTIFIER_DAEMON: '1' },
         });
         child.unref();
-        process.stdout.write(`Daemon started (PID: ${child.pid})\n`);
+
+        // Wait up to 5s for daemon to write its PID file
+        const pid = await waitForReady(home, 5000);
+        if (pid === null) {
+          process.stderr.write('Error: Daemon did not start within 5 seconds. Check logs: ' + logFile + '\n');
+          process.exit(1);
+        }
+        process.stdout.write(`Daemon started (PID: ${pid})\n`);
         process.exit(0);
       }
     });
-}
-
-/**
- * Build the argv for the detached child: re-invoke `notifier start --foreground`
- * so the child enters foreground mode (which actually runs the daemon loop).
- */
-function getStartArgs(): string[] {
-  const script = process.argv[1] ?? '';
-  return [script, 'start', '--foreground'];
 }
