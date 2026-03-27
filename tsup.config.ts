@@ -5,7 +5,7 @@ export default defineConfig({
   entry: ['src/index.ts'],
   
   // 目标环境
-  target: 'node20',
+  target: 'node22',
   
   // 输出格式：CLI 工具建议仅使用 ESM，除非有特殊的旧版兼容需求
   format: ['esm'],
